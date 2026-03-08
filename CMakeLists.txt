@@ -38,11 +38,7 @@ install(
 
 install(
     FILES include/os_transport.h
-          include/os_transport_thread_pool.h  # 新增：安装线程池公共头文件到devel包
+          include/os_transport_thread_pool.h
     DESTINATION include/os-transport
     COMPONENT devel
 )
-
-# 可选：编译测试程序
-add_executable(test_transport test/test_transport.c)
-target_link_libraries(test_transport os_transport pthread)

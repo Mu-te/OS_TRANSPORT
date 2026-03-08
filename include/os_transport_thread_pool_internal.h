@@ -2,7 +2,6 @@
 #define OS_TRANSPORT_THREAD_POOL_INTERNAL_H
 
 #include "os_transport_thread_pool.h"
-#include "os_transport_internal.h"
 #include <pthread.h>
 #include <stdint.h>
 #include <stdbool.h>

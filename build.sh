@@ -1,15 +1,15 @@
 #!/bin/bash
-set -e  # 出错立即退出
-
-# 定义颜色和常量
+set -e
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
+
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 BUILD_DIR="${ROOT_DIR}/build"
-INSTALL_DIR="${BUILD_DIR}/install"  # 编译后临时安装目录（供RPM打包）
-OUTPUT_DIR="${ROOT_DIR}/output"     # 最终RPM输出目录
+INSTALL_DIR="${BUILD_DIR}/install"
+OUTPUT_DIR="${ROOT_DIR}/output"
+# 其他常量保持不变
 RPM_SPEC="${ROOT_DIR}/rpm/os-transport.spec"
 PKG_NAME="os-transport"
 PKG_VERSION="1.0.0"

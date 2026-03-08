@@ -189,7 +189,7 @@ ThreadPoolHandle thread_pool_init(uint32_t thread_nums[THREAD_TYPE_MAX], uint32_
     handle->is_running = true;
 
     // 4. 初始化每种线程的正式队列 + 缓存队列
-    for (int i = 0; i < THREAD_TYPE_MAX; i++) {
+    for (uint32_t i = 0; i < THREAD_TYPE_MAX; i++) {
         // 正式队列容量=queue_cap，缓存队列容量=queue_cap*2（避免缓存溢出）
         if (task_queue_init(&handle->task_queues[i], queue_cap) != 0 ||
             task_queue_init(&handle->task_cache_queues[i], queue_cap * 2) != 0) {
@@ -201,8 +201,8 @@ ThreadPoolHandle thread_pool_init(uint32_t thread_nums[THREAD_TYPE_MAX], uint32_
     }
 
     // 5. 创建每种类型的线程
-    for (int type = 0; type < THREAD_TYPE_MAX; type++) {
-        for (int i = 0; i < handle->thread_nums[type]; i++) {
+    for (uint32_t type = 0; type < THREAD_TYPE_MAX; type++) {
+        for (uint32_t i = 0; i < handle->thread_nums[type]; i++) {
             // 设置线程私有数据（标记线程类型）
             pthread_key_t key;
             pthread_key_create(&key, NULL);
@@ -284,19 +284,19 @@ void thread_pool_destroy(ThreadPoolHandle handle) {
     pthread_mutex_unlock(&handle->global_mutex);
 
     // 2. 唤醒所有阻塞的线程（让线程退出）
-    for (int type = 0; type < THREAD_TYPE_MAX; type++) {
+    for (uint32_t type = 0; type < THREAD_TYPE_MAX; type++) {
         pthread_mutex_lock(&handle->task_queues[type].mutex);
         pthread_cond_broadcast(&handle->task_queues[type].cond_not_empty);
         pthread_mutex_unlock(&handle->task_queues[type].mutex);
 
         // 等待所有线程退出
-        for (int i = 0; i < handle->thread_nums[type]; i++) {
+        for (uint32_t i = 0; i < handle->thread_nums[type]; i++) {
             pthread_join(handle->threads[type][i], NULL);
         }
     }
 
     // 3. 销毁所有任务队列（正式+缓存）
-    for (int type = 0; type < THREAD_TYPE_MAX; type++) {
+    for (uint32_t type = 0; type < THREAD_TYPE_MAX; type++) {
         task_queue_destroy(&handle->task_queues[type]);
         task_queue_destroy(&handle->task_cache_queues[type]);
     }

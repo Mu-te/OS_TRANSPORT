@@ -4,9 +4,7 @@ Release:        %{release}
 Summary:        OS transport layer shared library
 License:        MIT
 BuildArch:      x86_64
-Requires:       glibc >= 2.17  # 只保留运行时依赖（安装RPM包的机器需要）
-# 注释/删除 BuildRequires（build.sh 已检查，无需rpmbuild再校验）
-# BuildRequires:  cmake gcc make
+Requires:       glibc >= 2.17
 
 %description
 OS transport layer library (libos_transport.so) for data send/recv.

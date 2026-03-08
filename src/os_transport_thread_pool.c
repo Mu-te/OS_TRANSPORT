@@ -260,13 +260,11 @@ static void* worker_thread_func(void* arg) {
         // 执行任务
         TRANSPORT_LOG("INFO", "worker %d start processing task %lu", thread_id, task.task_id);
         bool success = true;
+
+        // 如果任务函数有返回值，检查返回值
         if (task.task_func != NULL) {
-            try { // 简易异常捕获（避免worker崩溃）
-                task.task_func(task.task_arg);
-            } catch (...) {
-                success = false;
-                TRANSPORT_LOG("ERROR", "worker %d task %lu execute failed", thread_id, task.task_id);
-            }
+            // 执行任务函数
+            task.task_func(task.task_arg);
         } else {
             success = false;
             TRANSPORT_LOG("ERROR", "worker %d task %lu has no func", thread_id, task.task_id);

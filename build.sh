@@ -118,7 +118,7 @@ rpmbuild -bb --nodeps \
     --define "version_major ${PKG_VERSION_MAJOR}" \
     --define "release ${PKG_RELEASE}" \
     --define "install_root ${INSTALL_DIR}" \
-    --define "build_arch ${ARCH}" \  # 传递架构到spec文件
+    --define "build_arch ${ARCH}" \
     "${RPM_SPEC}"
 
 # ===================== 验证结果 =====================

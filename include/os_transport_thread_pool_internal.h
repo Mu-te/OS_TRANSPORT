@@ -9,6 +9,7 @@
 #include <stdarg.h>
 
 // Fix: Explicitly define the TRANSPORT_LOG macro (thread-safe, compatible with all source files)
+#ifndef TRANSPORT_LOG
 #define TRANSPORT_LOG(level, fmt, ...) \
     do { \
         fprintf(stderr, "[%s][%s:%d] " fmt "\n", level, __FILE__, __LINE__, ##__VA_ARGS__); \

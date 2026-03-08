@@ -6,8 +6,8 @@
 #include <sys/types.h>
 
 /**
- * @brief 传输层初始化函数
- * @param config 配置参数（0=默认配置）
+ * @brief 传输层初始化
+ * @param config 配置参数（0=默认）
  * @return 0=成功，非0=失败
  */
 int os_transport_init(uint32_t config);

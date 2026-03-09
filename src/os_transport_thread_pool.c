@@ -74,12 +74,7 @@ static void* worker_thread_func(void* arg) {
         TRANSPORT_LOG("INFO", "worker %d start processing task %lu", worker_idx, task.task_id);
         bool success = true;
         if (task.task_func != NULL) {
-            try { // 若编译报错，替换为C语言错误处理（参考之前的修复）
-                task.task_func(task.task_arg);
-            } catch (...) {
-                success = false;
-                TRANSPORT_LOG("ERROR", "worker %d task %lu execute failed", worker_idx, task.task_id);
-            }
+            task.task_func(task.task_arg);
         } else {
             success = false;
         }

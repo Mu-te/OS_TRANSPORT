@@ -139,18 +139,28 @@ static int pending_queue_push(PendingTaskQueue* queue, ThreadPoolTask* task) {
  * @brief Pending队列出队
  */
 static ThreadPoolTask* pending_queue_pop(PendingTaskQueue* queue) {
-    if (queue == NULL) return NULL;
+    LOG_INFO("[WZY]Enter into function pending_queue_pop");
+    if (queue == NULL) {
+        LOG_INFO("[WZY]Enter into function pending_queue_pop:queue is null");
+        return NULL;
+    } else {
+        LOG_INFO("[WZY]Enter into function pending_queue_pop:queue is not null");
+    }
 
     pthread_mutex_lock(&queue->mutex);
 
     // 无任务则等待
     while (queue->size == 0) {
+        LOG_INFO("[WZY] queue->size == 0, waiting1");
         pthread_cond_wait(&queue->cond_has_task, &queue->mutex);
+        LOG_INFO("[WZY] queue->size == 0, waiting2");
         // 被唤醒但仍无任务（销毁时）
         if (queue->size == 0) {
+            LOG_INFO("[WZY] queue->size == 0, waiting3");
             pthread_mutex_unlock(&queue->mutex);
             return NULL;
         }
+        LOG_INFO("[WZY] queue->size == 0, waiting4");
     }
 
     // 出队
@@ -360,7 +370,7 @@ static void* async_poll_thread_func(void* arg) {
             if (pending_task == NULL) {
                 LOG_INFO("[WZY]pending_task is null");
             } else {
-                LOG_INFO("[WZY]pending_task is null");
+                LOG_INFO("[WZY]pending_task is not null");
             }
 
             // 查找最优worker

@@ -107,6 +107,7 @@ static int pending_queue_resize(PendingTaskQueue* queue) {
  * @brief Pending队列入队（缓存任务）
  */
 static int pending_queue_push(PendingTaskQueue* queue, ThreadPoolTask* task) {
+    LOG_INFO("[WZY] Enter into function pending_queue_push");
     if (queue == NULL || task == NULL) return -1;
 
     pthread_mutex_lock(&queue->mutex);
@@ -540,10 +541,10 @@ int thread_pool_start(ThreadPoolHandle handle) {
  * @brief 外部提交任务
  */
 uint64_t thread_pool_submit_task(ThreadPoolHandle handle,
-                                    void (*task_func)(void* arg),
-                                    void* task_arg,
-                                    TaskCompleteCb complete_cb,
-                                    void* user_data) {
+                                 void (*task_func)(void* arg),
+                                 void* task_arg,
+                                 TaskCompleteCb complete_cb,
+                                 void* user_data) {
     if (handle == NULL || !handle->is_initialized || handle->is_destroying || task_func == NULL) {
         LOG_ERROR("Invalid param (handle=%p, init=%d, destroying=%d, func=%p)",
                  handle, handle->is_initialized, handle->is_destroying, task_func);

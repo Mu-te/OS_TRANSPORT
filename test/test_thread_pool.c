@@ -50,10 +50,10 @@ int main() {
         int* task_arg = (int*)malloc(sizeof(int));
         *task_arg = i + 1;
         uint64_t task_id = thread_pool_submit_task(pool,
-                                                      test_task_func,
-                                                      task_arg,
-                                                      test_complete_cb,
-                                                      "Task finish notify");
+                                                   test_task_func,
+                                                   task_arg,
+                                                   test_complete_cb,
+                                                   "Task finish notify");
         if (task_id == 0) {
             printf("Submit task %d failed\n", i+1);
             free(task_arg);

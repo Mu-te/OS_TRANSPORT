@@ -31,7 +31,7 @@ void test_custom_notify(ThreadPoolHandle pool) {
 
 int main() {
     // 1. 初始化线程池（每个worker队列容量2，pending队列初始容量10）
-    ThreadPoolHandle pool = os_thread_pool_init(2, 10);
+    ThreadPoolHandle pool = thread_pool_init(2, 10);
     if (pool == NULL) {
         printf("thread pool init failed\n");
         return -1;

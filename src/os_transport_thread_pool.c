@@ -463,7 +463,7 @@ static void* async_poll_thread_func(void* arg) {
 /**
  * @brief 初始化线程池
  */
-ThreadPoolHandle os_thread_pool_init(uint32_t worker_queue_cap, uint32_t pending_queue_cap) {
+ThreadPoolHandle thread_pool_init(uint32_t worker_queue_cap, uint32_t pending_queue_cap) {
     // 参数校验
     if (worker_queue_cap == 0) {
         LOG_ERROR("worker queue cap cannot be 0");

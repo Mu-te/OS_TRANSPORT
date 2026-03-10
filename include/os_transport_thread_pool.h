@@ -33,7 +33,7 @@ typedef struct _ThreadPool* ThreadPoolHandle;
  * @param pending_queue_cap 全局pending队列初始容量（0=默认1024）
  * @return 线程池句柄（NULL=失败）
  */
-ThreadPoolHandle os_thread_pool_init(uint32_t worker_queue_cap, uint32_t pending_queue_cap);
+ThreadPoolHandle thread_pool_init(uint32_t worker_queue_cap, uint32_t pending_queue_cap);
 
 /**
  * @brief 启动线程池（所有线程开始等待任务）

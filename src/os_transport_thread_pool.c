@@ -1,4 +1,5 @@
 #include "os_transport_thread_pool_internal.h"
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include <errno.h>

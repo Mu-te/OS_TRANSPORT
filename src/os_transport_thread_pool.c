@@ -330,12 +330,14 @@ static void* worker_thread_func(void* arg) {
 
 // ===================== AsyncPoll线程逻辑（调度中枢） =====================
 static void* async_poll_thread_func(void* arg) {
+    LOG_INFO("[WZY]Enter into function async_poll_thread_func");
     struct _ThreadPool* pool = (struct _ThreadPool*)arg;
     LOG_INFO("asyncPoll thread initialized, waiting for start");
 
     // 等待线程池启动（阻塞）
     pthread_mutex_lock(&pool->global_mutex);
     while (!pool->is_running && !pool->is_destroying) {
+        LOG_INFO("[WZY]pool is not running or destroyin");
         pthread_cond_wait(&pool->cond_interrupt, &pool->global_mutex);
     }
     pthread_mutex_unlock(&pool->global_mutex);
@@ -350,10 +352,16 @@ static void* async_poll_thread_func(void* arg) {
     LOG_INFO("asyncPoll thread started, monitoring interrupt");
 
     while (!pool->is_destroying) {
+        LOG_INFO("[WZY]asyncPoll is working");
         // 第一步：优先处理pending队列（缓存的任务）
         while (1) {
+            LOG_INFO("[WZY]asyncPoll is work for pending queue");
             ThreadPoolTask* pending_task = pending_queue_pop(&pool->pending_queue);
-            if (pending_task == NULL) break;
+            if (pending_task == NULL) {
+                LOG_INFO("[WZY]pending_task is null");
+            } else {
+                LOG_INFO("[WZY]pending_task is null");
+            }
 
             // 查找最优worker
             int target_idx = find_best_worker(pool);
@@ -362,13 +370,14 @@ static void* async_poll_thread_func(void* arg) {
                 pending_queue_push(&pool->pending_queue, pending_task);
                 break;
             }
+            LOG_INFO("[WZY] best worker is %d.", target_idx);
 
             // 尝试将pending任务放入worker队列
             WorkerThread* worker = &pool->workers[target_idx];
             pthread_mutex_lock(&worker->mutex);
             int ret = worker_queue_push(worker, pending_task);
             pthread_mutex_unlock(&worker->mutex);
-
+            LOG_INFO("[WZY] push pending queue to work queue");
             if (ret == 0) {
                 // 放入成功，通知worker执行
                 pthread_cond_signal(&worker->cond_task);
@@ -384,25 +393,30 @@ static void* async_poll_thread_func(void* arg) {
         }
 
         // 第二步：处理外部通知（任务提交/自定义事件）
+        LOG_INFO("[WZY] working for out things");
         pthread_mutex_lock(&pool->global_mutex);
         while (!pool->has_notify && !pool->is_destroying) {
+            LOG_INFO("[WZY] pool->has_notify is false and pool->is_destroying is false");
             pthread_cond_wait(&pool->cond_interrupt, &pool->global_mutex);
         }
 
         // 线程池销毁，退出循环
         if (pool->is_destroying) {
+            LOG_INFO("[WZY] working for out things:pool->is_destroying");
             pthread_mutex_unlock(&pool->global_mutex);
             break;
         }
 
         // 读取通知信息
         uint32_t notify_type = pool->notify_type;
+        LOG_INFO("[WZY] working for out things, type = %u", notify_type);
         void* notify_data = pool->notify_data;
         pool->has_notify = false;
         pthread_mutex_unlock(&pool->global_mutex);
 
         // 处理任务提交通知（类型0）
         if (notify_type == 0) {
+            LOG_INFO("[WZY] working for out things, type = 0!");
             ThreadPoolTask* task = (ThreadPoolTask*)notify_data;
             if (task == NULL) {
                 LOG_ERROR("asyncPoll receive null task");
@@ -411,6 +425,7 @@ static void* async_poll_thread_func(void* arg) {
 
             // 查找最优worker
             int target_idx = find_best_worker(pool);
+            LOG_INFO("[WZY] working for out things, best worker is = %d!", target_idx);
             if (target_idx < 0) {
                 LOG_WARN("no available worker, add task %lu to pending", task->task_id);
                 pending_queue_push(&pool->pending_queue, task);
@@ -419,6 +434,7 @@ static void* async_poll_thread_func(void* arg) {
 
             // 尝试放入worker队列
             WorkerThread* worker = &pool->workers[target_idx];
+            LOG_INFO("[WZY] working for out things, try to push to worker queue");
             pthread_mutex_lock(&worker->mutex);
             int ret = worker_queue_push(worker, task);
             pthread_mutex_unlock(&worker->mutex);
@@ -576,10 +592,10 @@ int thread_pool_start(ThreadPoolHandle handle) {
  * @brief 外部提交任务
  */
 uint64_t thread_pool_submit_task(ThreadPoolHandle handle,
-                                    void (*task_func)(void* arg),
-                                    void* task_arg,
-                                    TaskCompleteCb complete_cb,
-                                    void* user_data) {
+                                 void (*task_func)(void* arg),
+                                 void* task_arg,
+                                 TaskCompleteCb complete_cb,
+                                 void* user_data) {
     // 参数校验
     if (handle == NULL || !handle->is_initialized || handle->is_destroying || task_func == NULL) {
         LOG_ERROR("invalid param (handle=%p, initialized=%d, destroying=%d, task_func=%p)",

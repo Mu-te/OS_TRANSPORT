@@ -50,6 +50,9 @@ static int worker_queue_pop(WorkerThread* worker, ThreadPoolTask* task) {
 /**
  * @brief 初始化Pending队列
  */
+/**
+ * @brief 初始化Pending队列
+ */
 static int pending_queue_init(PendingTaskQueue* queue, uint32_t init_cap) {
     if (queue == NULL) return -1;
 
@@ -68,6 +71,7 @@ static int pending_queue_init(PendingTaskQueue* queue, uint32_t init_cap) {
     queue->size = 0;
     queue->head = 0;
     queue->tail = 0;
+    queue->is_destroying = false;  // 初始化销毁标记为false
     pthread_mutex_init(&queue->mutex, NULL);
     pthread_cond_init(&queue->cond_has_task, NULL);
     return 0;
@@ -139,56 +143,61 @@ static int pending_queue_push(PendingTaskQueue* queue, ThreadPoolTask* task) {
  * @brief Pending队列出队
  */
 static ThreadPoolTask* pending_queue_pop(PendingTaskQueue* queue) {
-    LOG_INFO("[WZY]Enter into function pending_queue_pop");
-    if (queue == NULL) {
-        LOG_INFO("[WZY]Enter into function pending_queue_pop:queue is null");
-        return NULL;
-    } else {
-        LOG_INFO("[WZY]Enter into function pending_queue_pop:queue is not null");
-    }
+    if (queue == NULL) return NULL;
 
     pthread_mutex_lock(&queue->mutex);
-
-    // 无任务则等待
-    while (queue->size == 0) {
-        LOG_INFO("[WZY] queue->size == 0, waiting1");
-        pthread_cond_wait(&queue->cond_has_task, &queue->mutex);
-        LOG_INFO("[WZY] queue->size == 0, waiting2");
-        // 被唤醒但仍无任务（销毁时）
-        if (queue->size == 0) {
-            LOG_INFO("[WZY] queue->size == 0, waiting3");
+    while (queue->size == 0 && !queue->is_destroying) {
+        // 等待条件变量（释放锁，被唤醒后重新加锁）
+        int ret = pthread_cond_wait(&queue->cond_has_task, &queue->mutex);
+        if (ret != 0) {
+            LOG_ERROR("pthread_cond_wait failed (err=%d)", ret);
             pthread_mutex_unlock(&queue->mutex);
             return NULL;
         }
-        LOG_INFO("[WZY] queue->size == 0, waiting4");
     }
 
-    // 出队
+    // 场景1：队列已销毁，直接返回NULL
+    if (queue->is_destroying) {
+        pthread_mutex_unlock(&queue->mutex);
+        LOG_INFO("pending queue is destroying, pop exit");
+        return NULL;
+    }
+
+    // 场景2：有任务，正常出队
     ThreadPoolTask* task = queue->tasks[queue->head];
     queue->head = (queue->head + 1) % queue->cap;
     queue->size--;
 
     pthread_mutex_unlock(&queue->mutex);
+    LOG_INFO("pending queue pop task %lu (remaining size=%d)", task->task_id, queue->size);
     return task;
 }
 
 /**
  * @brief 销毁Pending队列
  */
+/**
+ * @brief 销毁Pending队列
+ */
 static void pending_queue_destroy(PendingTaskQueue* queue) {
     if (queue == NULL) return;
 
+    // 第一步：标记销毁，唤醒所有等待的线程
     pthread_mutex_lock(&queue->mutex);
+    queue->is_destroying = true;
+    pthread_cond_broadcast(&queue->cond_has_task);  // 强制唤醒所有wait的线程
+    pthread_mutex_unlock(&queue->mutex);
 
-    // 释放所有pending任务
+    // 第二步：释放所有pending任务
+    pthread_mutex_lock(&queue->mutex);
     for (uint32_t i = 0; i < queue->size; i++) {
         uint32_t idx = (queue->head + i) % queue->cap;
         free(queue->tasks[idx]);
     }
-
     free(queue->tasks);
     pthread_mutex_unlock(&queue->mutex);
 
+    // 第三步：销毁同步原语
     pthread_mutex_destroy(&queue->mutex);
     pthread_cond_destroy(&queue->cond_has_task);
 }

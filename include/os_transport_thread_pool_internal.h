@@ -41,6 +41,7 @@ typedef struct {
     uint32_t tail;                  // 尾指针
     pthread_mutex_t mutex;          // 队列锁
     pthread_cond_t cond_has_task;   // 有任务通知条件
+    bool is_destroying;             // 队列销毁标记（关联线程池）
 } PendingTaskQueue;
 
 /**

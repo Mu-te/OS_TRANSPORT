@@ -107,7 +107,6 @@ static int pending_queue_resize(PendingTaskQueue* queue) {
  * @brief Pending队列入队（缓存任务）
  */
 static int pending_queue_push(PendingTaskQueue* queue, ThreadPoolTask* task) {
-    LOG_INFO("[WZY] Enter into function pending_queue_push");
     if (queue == NULL || task == NULL) return -1;
 
     pthread_mutex_lock(&queue->mutex);
@@ -354,6 +353,7 @@ static void* async_poll_thread_func(void* arg) {
                 LOG_ERROR("AsyncPoll receive null task");
                 continue;
             }
+            LOG_INFO("[WZY] Start to do task:%u.", task->task_id);
 
             // 找最优Worker（不变）
             int target_idx = find_best_worker(pool);

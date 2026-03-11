@@ -381,7 +381,7 @@ static void* async_poll_thread_func(void* arg) {
                 }
             } else {
                 // 处理自定义通知（不变）
-                LOG_INFO("AsyncPoll receive custom notify (type=%d, data=%p)", notify_type, notify_data);
+                LOG_INFO("AsyncPoll receive custom notify (type=%d, data=%p)", item.type, item.data);
             }
         }
 
@@ -539,7 +539,7 @@ int thread_pool_start(ThreadPoolHandle handle) {
 }
 
 // 通知队列入队函数
-static int notify_queue_push(struct _OSThreadPool* pool, uint32_t type, void* data) {
+static int notify_queue_push(struct _ThreadPool* pool, uint32_t type, void* data) {
     if (pool == NULL || data == NULL) return -1;
 
     // 队列满则扩容（翻倍）

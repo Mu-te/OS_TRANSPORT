@@ -353,7 +353,7 @@ static void* async_poll_thread_func(void* arg) {
                 LOG_ERROR("AsyncPoll receive null task");
                 continue;
             }
-            LOG_INFO("[WZY] Start to do task:%u.", task->task_id);
+            LOG_INFO("[WZY] Start to do task:%lu.", task->task_id);
 
             // 找最优Worker（不变）
             int target_idx = find_best_worker(pool);

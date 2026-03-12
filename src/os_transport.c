@@ -1,11 +1,11 @@
 #include "os_transport.h"
+#include "os_transport_thread_pool_internal.h"
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 // 全局初始化状态
 static int g_inited = 0;
-static ThreadPoolHandle g_thread_pool;
 
 uint32_t os_transport_init(urma_context_t* urma_ctx, os_transport_cfg_t* ost_cfg, void** handle)
 {
@@ -21,24 +21,29 @@ uint32_t os_transport_init(urma_context_t* urma_ctx, os_transport_cfg_t* ost_cfg
     memset(ost_handle, 0, sizeof(os_transport_handle_t));
     
     ost_handle->urma_ctx = urma_ctx;
-    ost_handle->ost_cfg = ost_cfg;
-    
+    ost_handle->worker_thread_num = ost_cfg->worker_thread_num;
+    ost_handle->urma_event_mode = ost_cfg->urma_event_mode;
 
     // 初始化线程池
     // worker_queue_cap: 每个Worker的任务队列容量; pending_queue_cap: 0表示使用默认值1024
     ost_handle->thread_pool = thread_pool_init(ost_cfg->worker_thread_num, 0);
     if (!ost_handle->thread_pool) {
         fprintf(stderr, "os_transport: 线程池初始化失败\n");
+        free(ost_handle);
         return -1;
     }
     if (thread_pool_start(ost_handle->thread_pool) != 0) {
         fprintf(stderr, "os_transport: 线程池启动失败\n");
         thread_pool_destroy(ost_handle->thread_pool);
         ost_handle->thread_pool = NULL;
+        free(ost_handle);
         return -1;
     }
 
     *handle = (void*)ost_handle;
+
+    // 先注册jfc，后续看情况是否需要再修改
+    os_transport_reg_jfc(ost_cfg->jfce, ost_cfg->jfc, (void*)ost_handle);
     g_inited = 1;
 
     return 0;
@@ -81,15 +86,22 @@ send_task_arg_t* construct_send_task_arg(urma_write_info_t write_info, struct ch
         fprintf(stderr, "os_transport: 内存分配失败\n");
         return NULL;
     }
-    // 先获取request_id等信息构造user_ctx，后续根据chunk_id等信息更新user_ctx的具体内容
-    os_transport_user_data_t user_data = {0};
-    user_data.user_ctx = write_info.user_ctx;
-    user_data.bs.chunk_type = is_last_chunk ? LAST_CHUNK : MIDDLE_CHUNK;
-    user_data.bs.chunk_id = chunk_id;
-    user_data.bs.chunk_size = chunk_info->len;
+    // 显式构造每个位域字段，避免隐式保留旧值
+    os_transport_user_data_t user_data_server = {0};
+    user_data_server.bs.request_id = write_info.user_ctx_server; // 将server_key作为request_id传入
+    user_data_server.bs.chunk_type = is_last_chunk ? LAST_CHUNK : MIDDLE_CHUNK;
+    user_data_server.bs.chunk_id = chunk_id;
+    user_data_server.bs.chunk_size = chunk_info->len;
+
+    os_transport_user_data_t user_data_client = {0};
+    user_data_client.bs.request_id = write_info.user_ctx_client; // 将client_key作为request_id传入
+    user_data_client.bs.chunk_type = is_last_chunk ? LAST_CHUNK : MIDDLE_CHUNK;
+    user_data_client.bs.chunk_id = chunk_id;
+    user_data_client.bs.chunk_size = chunk_info->len;
 
     arg->write_info = write_info;
-    arg->write_info.user_ctx = user_data.user_ctx;
+    arg->write_info.user_ctx_server = user_data_server.user_ctx;
+    arg->write_info.user_ctx_client = user_data_client.user_ctx;
     arg->chunk_info = chunk_info;
     arg->is_last_chunk = is_last_chunk;
 
@@ -132,30 +144,54 @@ uint32_t construct_and_register_worker_task(os_transport_handle_t *ost_handle,
     }
     *sync_handle = sync;
     if (type == SEND_TASK) {
-        ThreadPoolTask* tasks = malloc(chunk_num * sizeof(ThreadPoolTask));
+        // 只分配 chunk_num - 1 个 task（chunk[0] 由主线程发送）
+        uint64_t task_count = chunk_num - 1;
+        ThreadPoolTask* tasks = malloc(task_count * sizeof(ThreadPoolTask));
+        if (!tasks) {
+            fprintf(stderr, "os_transport: 内存分配失败\n");
+            free(sync);
+            *sync_handle = NULL;
+            return -1;
+        }
         // 从chunk[1]开始构造send类型的task并注册到线程池，chunk[0]由主线程发送
-        for (uint64_t i = 1; i < chunk_num; i++) {
-            if (!tasks) {
-                fprintf(stderr, "os_transport: 内存分配失败\n");
-                return -1;
-            }
-            // 这里需要根据实际情况构造send_task_arg，例如：write_info，chunk_id，is_last_chunk和sync等参数
-            bool is_last_chunk = (i == chunk_num - 1) ? true : false;
+        for (uint64_t i = 0; i < task_count; i++) {
+            uint64_t chunk_idx = i + 1; // 对应 chunks 数组中的索引
+            bool is_last_chunk = (chunk_idx == chunk_num - 1) ? true : false;
             send_task_arg_t *send_task_arg =
-                construct_send_task_arg(urma_info.write_info, &chunks[i], i, is_last_chunk, sync);
+                construct_send_task_arg(urma_info.write_info, &chunks[chunk_idx], chunk_idx, is_last_chunk, sync);
             if (!send_task_arg) {
                 fprintf(stderr, "os_transport: 任务参数构造失败\n");
-                // 这里可以根据实际情况选择返回一个错误的task或者直接退出
+                // 释放已创建的 task 参数
+                for (uint64_t j = 0; j < i; j++) {
+                    free(tasks[j].task_arg);
+                }
+                free(tasks);
+                free(sync);
+                *sync_handle = NULL;
                 return -1;
             }
-            tasks[i] = construct_worker_task(i, task_func, send_task_arg);
+            tasks[i] = construct_worker_task(chunk_idx, task_func, send_task_arg);
         }
         // 批量提交任务到线程池
-        thread_pool_submit_batch_tasks(ost_handle->thread_pool, tasks, chunk_num - 1, NULL, NULL);
+        uint64_t *task_ids = thread_pool_submit_batch_tasks(ost_handle->thread_pool, tasks, task_count, NULL, NULL);
+        if (!task_ids) {
+            fprintf(stderr, "os_transport: 任务提交失败\n");
+            for (uint64_t j = 0; j < task_count; j++) {
+                free(tasks[j].task_arg);
+            }
+            free(tasks);
+            free(sync);
+            *sync_handle = NULL;
+            return -1;
+        }
+        free(task_ids);
+        free(tasks);
     } else if (type == RECV_TASK) {
         // 构造recv类型的task，类似于send类型的task
     } else {
         fprintf(stderr, "os_transport: 任务类型错误\n");
+        free(sync);
+        *sync_handle = NULL;
         return -1;
     }
 
@@ -188,8 +224,9 @@ void send_task_worker_func(void* arg)
 }
 
 // 切分chunk的函数，负责将数据切分为多个chunk
-// 返回切分后的chunk数量，retchunks用于返回切分后的chunk数组
-uint64_t split_chunks(struct buffer_info* local_src, struct buffer_info* remote_dst, uint32_t len, struct chunk_info** retchunks)
+// 返回 0 表示成功，-1 表示失败；retchunks 返回切分后的 chunk 数组，ret_chunk_num 返回 chunk 数量
+uint32_t split_chunks(struct buffer_info* local_src, struct buffer_info* remote_dst,
+                      uint32_t len, struct chunk_info** ret_chunks, uint64_t* ret_chunk_num)
 {
     size_t total_len = len;
     struct chunk_info *chunks;
@@ -206,8 +243,9 @@ uint64_t split_chunks(struct buffer_info* local_src, struct buffer_info* remote_
                             ? DEFAULT_CHUNK_SIZE
                             : (total_len - i * DEFAULT_CHUNK_SIZE);
     }
-    *retchunks = chunks;
-    return chunks_num;
+    *ret_chunks = chunks;
+    *ret_chunk_num = chunks_num;
+    return 0;
 }
 
 
@@ -230,7 +268,7 @@ void wait_for_task_complete(task_sync_t* sync_handle)
  */
 uint32_t os_transport_send(void *handle, struct urma_jetty_info *jetty_info,
                            struct buffer_info *local_src, struct buffer_info *remote_dst,
-                           uint32_t len, uint32_t request_key)
+                           uint32_t len, uint32_t server_key, uint32_t client_key)
 {
     if (!g_inited) {
         fprintf(stderr, "os_transport: 未初始化\n");
@@ -248,8 +286,8 @@ uint32_t os_transport_send(void *handle, struct urma_jetty_info *jetty_info,
 
     // 将源地址中的数据拆分为多个chunk，每个chunk的大小不超过DEFAULT_CHUNK_SIZE
     struct chunk_info* chunks;
-    uint64_t chunks_num = split_chunks(local_src, remote_dst, len, &chunks);
-    if (chunks_num == (uint64_t)-1) {
+    uint64_t chunks_num;
+    if (split_chunks(local_src, remote_dst, len, &chunks, &chunks_num) != 0) {
         return -1;
     }
 
@@ -258,16 +296,20 @@ uint32_t os_transport_send(void *handle, struct urma_jetty_info *jetty_info,
     urma_info.write_info = (urma_write_info_t){
         .jfs = jetty_info->jfs,
         .target_jfr = jetty_info->tjetty,
-        .dst_tseg = &remote_dst->tseg,
-        .src_tseg = &local_src->tseg,
+        .dst_tseg = remote_dst->tseg,
+        .src_tseg = local_src->tseg,
         .flag = 0, // 根据实际情况设置flag
-        .user_ctx = request_key // 可以将request_key作为user_ctx传入，后续在每个chunk中分别设置具体信息
+        .user_ctx_server = server_key, // 可以将server_key作为user_ctx传入，后续在每个chunk中分别设置具体信息
+        .user_ctx_client = client_key
     };
 
     // 构造task并注册，注意最后一个chunk的task需要负责唤醒os_transport_send的线程继续执行
     task_sync_t* sync_handle;
-    construct_and_register_worker_task(
-        ost_handle, chunks, chunks_num, SEND_TASK, send_task_worker_func, &sync_handle, urma_info);
+    if (construct_and_register_worker_task(
+            ost_handle, chunks, chunks_num, SEND_TASK, send_task_worker_func, &sync_handle, urma_info) != 0) {
+        free(chunks);
+        return -1;
+    }
 
     // 手动发送第一个chunk
     // urma_write_with_notify(g_urma_ctx, jetty_info, remote_dst, local_src, dst, src,
@@ -322,16 +364,25 @@ uint32_t os_transport_recv(void* handle, struct buffer_info* host_src,
         return -1;
     }
 
+    os_transport_handle_t *ost_handle = (os_transport_handle_t *)handle;
+
     // 将host源数据拆分为多个chunk
-    struct buffer_info* chunks;
-    uint64_t chunks_num = split_chunks(host_src, len, &chunks);
-    if (chunks_num == (uint64_t)-1) {
+    struct chunk_info* chunks;
+    uint64_t chunks_num;
+    // TODO: 需要确定 recv 场景下的数据总长度获取方式，目前暂时使用 0 作为占位
+    uint32_t total_len = 0;
+    if (split_chunks(host_src, device_dst, total_len, &chunks, &chunks_num) != 0) {
         return -1;
     }
 
     // 构造recv类型的task并注册
+    urma_info_t urma_info = {0};
     task_sync_t* sync_handle;
-    construct_and_register_worker_task(chunks_num, RECV_TASK, recv_task_worker_func, &sync_handle);
+    if (construct_and_register_worker_task(
+            ost_handle, chunks, chunks_num, RECV_TASK, recv_task_worker_func, &sync_handle, urma_info) != 0) {
+        free(chunks);
+        return -1;
+    }
     // 等待所有task完成后返回
     wait_for_task_complete(sync_handle);
 
@@ -355,5 +406,7 @@ uint32_t os_transport_destroy(void* handle)
 
     g_inited = 0;
     printf("os_transport: 资源销毁成功\n");
+
+    free(ost_handle);
     return 0;
 }

@@ -2,7 +2,6 @@
 #define OS_TRANSPORT_H
 
 #include "os_transport_thread_pool.h"
-#include "os_transport_thread_pool_internal.h"
 #include <stddef.h>
 #include <stdint.h>
 #include <sys/types.h>
@@ -24,7 +23,7 @@ typedef union {
         uint64_t chunk_type : 2;
         uint64_t chunk_id : 6;
         uint64_t chunk_size : 24;
-        uint64_t requeset_id : 32;
+        uint64_t request_id : 32;
     } bs;
     uint64_t user_ctx;
 } os_transport_user_data_t;
@@ -61,7 +60,8 @@ typedef struct {
     urma_target_seg_t *dst_tseg;
     urma_target_seg_t *src_tseg;
     urma_jfs_wr_flag_t flag;
-    uint64_t user_ctx;
+    uint32_t user_ctx_server;
+    uint32_t user_ctx_client;
 } urma_write_info_t;
 
 typedef struct {
@@ -121,9 +121,10 @@ typedef struct urma_jetty_info {
 } urma_jetty_info_t; 
 
 typedef struct os_transport_handle {
-    urma_context_t *urma_ctx; /* [Private] point to urma context. */
-    os_transport_cfg_t *ost_cfg; /* [Private] point to os transport config. */
-    ThreadPoolHandle *thread_pool; /* [Private] 线程池句柄 */
+    urma_context_t *urma_ctx;
+    uint32_t worker_thread_num;
+    bool urma_event_mode;
+    ThreadPoolHandle thread_pool;
 } os_transport_handle_t;
 
 uint32_t os_transport_init(urma_context_t *urma_ctx, os_transport_cfg_t *ost_cfg, void **handle);
@@ -132,7 +133,7 @@ uint32_t os_transport_reg_jfc(urma_jfce_t *jfce, urma_jfc_t *jfc, void *handle);
 
 uint32_t os_transport_send(void *handle, struct urma_jetty_info *jetty_info,
                            struct buffer_info *local_src, struct buffer_info *remote_dst,
-                           uint32_t buffer_num, uint32_t server_key, uint32_t client_key);
+                           uint32_t len, uint32_t request_key);
 
 uint32_t os_transport_recv(void *handle, struct buffer_info *host_src,
                            struct buffer_info *device_dst, uint32_t buffer_num, uint32_t client_key);

@@ -2,13 +2,10 @@
 #define OS_TRANSPORT_H
 
 #include "os_transport_thread_pool.h"
+#include "os_transport_urma.h"
 #include <stddef.h>
 #include <stdint.h>
 #include <sys/types.h>
-#include <urma/urma_api.h>
-#ifdef URMA_OVER_UB
-#    include <urma/urma_ubagg.h>
-#endif
 
 #define DEFAULT_CHUNK_SIZE (2 * 1024 * 1024)   // 2MB
 
@@ -29,14 +26,14 @@ typedef union {
 } os_transport_user_data_t;
 
 struct buffer_info {
-    uint64_t  addr;   // 数据缓冲区地址
-    urma_target_seg_t *tseg; // 目标分段信息
+    uint64_t addr;             // 数据缓冲区地址
+    urma_target_seg_t *tseg;   // 目标分段信息
 };
 
 struct chunk_info {
     uint64_t src;   // 源缓冲区地址
     uint64_t dst;   // 目标缓冲区地址
-    uint32_t len;      // 数据长度
+    uint32_t len;   // 数据长度
 };
 
 typedef struct os_transport_cfg {
@@ -55,33 +52,9 @@ typedef enum {
 } task_type_t;
 
 typedef struct {
-    urma_jfs_t *jfs;
-    urma_target_jetty_t *target_jfr;
-    urma_target_seg_t *dst_tseg;
-    urma_target_seg_t *src_tseg;
-    urma_jfs_wr_flag_t flag;
-    uint32_t user_ctx_server;
-    uint32_t user_ctx_client;
-} urma_write_info_t;
-
-typedef struct {
-
-} urma_recv_info_t;
-
-typedef union {
-    urma_write_info_t write_info;
-    urma_recv_info_t recv_info;
-} urma_info_t;
-
-
-typedef struct {
-
-} recv_info_t;
-
-typedef struct {
     pthread_mutex_t mutex;
     pthread_cond_t cond;
-    int request_completed; // 该请求的所有task是否都已完成
+    int request_completed;   // 该请求的所有task是否都已完成
 } task_sync_t;
 
 // send类型的task参数，包括：
@@ -108,18 +81,6 @@ typedef struct {
     recv_info_t recv_info;
 } recv_task_arg_t;
 
-typedef enum jetty_mode {
-    JETTY_MODE_SIMPLEX = 0,
-    JETTY_MODE_DUPLEX
-} jetty_mode_t;
-
-typedef struct urma_jetty_info {
-    urma_jfs_t *jfs; /* [Public] see urma_jetty_info. */
-    urma_jetty_t *jetty; /* [Public] see urma_jetty_info. */
-    urma_target_jetty_t *tjetty; /* [Public] see urma_jetty_info. */
-    jetty_mode_t jetty_mode; /* [Public] see urma_jetty_info. */
-} urma_jetty_info_t; 
-
 typedef struct os_transport_handle {
     urma_context_t *urma_ctx;
     uint32_t worker_thread_num;
@@ -136,8 +97,9 @@ uint32_t os_transport_send(void *handle, struct urma_jetty_info *jetty_info,
                            uint32_t len, uint32_t request_key);
 
 uint32_t os_transport_recv(void *handle, struct buffer_info *host_src,
-                           struct buffer_info *device_dst, uint32_t buffer_num, uint32_t client_key);
+                           struct buffer_info *device_dst, uint32_t buffer_num,
+                           uint32_t client_key);
 
 uint32_t os_transport_destroy(void *handle);
 
-#endif // OS_TRANSPORT_H
+#endif   // OS_TRANSPORT_H

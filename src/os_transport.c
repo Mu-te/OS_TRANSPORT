@@ -69,11 +69,10 @@ uint32_t os_transport_reg_jfc(urma_jfce_t* jfce, urma_jfc_t* jfc, void* handle)
     return 0;
 }
 
-urma_status_t urma_write_with_notify(urma_jfs_t* jfs, urma_target_jetty_t* target_jfr,
-                                     urma_target_seg_t* dst_tseg, urma_target_seg_t* src_tseg,
-                                     uint64_t dst, uint64_t src, uint32_t len,
-                                     urma_jfs_wr_flag_t flag, uint64_t user_ctx)
+urma_status_t urma_write_with_notify(urma_write_info_t write_info, struct chunk_info *chunk_info)
 {
+
+
     return URMA_SUCCESS;
 }
 
@@ -295,8 +294,9 @@ uint32_t os_transport_send(void *handle, struct urma_jetty_info *jetty_info,
     // 构造send类型的task并注册，注意最后一个chunk的task需要负责唤醒os_transport_send的线程继续执行
     urma_info.write_info = (urma_write_info_t){
         .jfs = jetty_info->jfs,
+        .jetty = jetty_info->jetty,
         .target_jfr = jetty_info->tjetty,
-        .dst_tseg = remote_dst->tseg,
+        .dst_tseg = remote_dst->tseg, 
         .src_tseg = local_src->tseg,
         .flag = 0, // 根据实际情况设置flag
         .user_ctx_server = server_key, // 可以将server_key作为user_ctx传入，后续在每个chunk中分别设置具体信息

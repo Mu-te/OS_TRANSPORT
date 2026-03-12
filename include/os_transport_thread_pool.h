@@ -43,21 +43,6 @@ ThreadPoolHandle thread_pool_init(uint32_t worker_queue_cap, uint32_t pending_qu
 int thread_pool_start(ThreadPoolHandle handle);
 
 /**
- * @brief 外部提交任务（触发中断，通知asyncPoll处理）
- * @param handle 线程池句柄
- * @param task_func 任务执行函数
- * @param task_arg 任务参数
- * @param complete_cb 任务完成回调
- * @param user_data 回调透传数据
- * @return 任务ID（0=失败）
- */
-uint64_t thread_pool_submit_task(ThreadPoolHandle handle,
-                                 void (*task_func)(void* arg),
-                                 void* task_arg,
-                                 TaskCompleteCb complete_cb,
-                                 void* user_data);
-
-/**
  * @brief 批量提交任务（所有任务入同一个worker线程，保证执行顺序）
  * @param handle 线程池句柄
  * @param tasks 任务数组（用户需分配，每个任务的task_func必须有效）

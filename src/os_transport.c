@@ -6,7 +6,6 @@
 #include <string.h>
 // 全局初始化状态
 static int g_inited = 0;
-void wait_for_task_complete(task_sync_t* sync_handle);
 
 typedef struct {
     ThreadPoolTask *tasks;
@@ -144,7 +143,7 @@ void construct_send_task_arg(send_task_arg_t* arg, urma_write_info_t write_info,
     arg->sync = sync;
 }
 
-void construct_recv_task_arg(recv_task_arg_t *arg, recv_info_t recv_info,
+void construct_recv_task_arg(recv_task_arg_t *arg, urma_recv_info_t recv_info,
                              struct chunk_info *chunk_info, bool is_last_chunk, task_sync_t *sync)
 {
     memset(arg, 0, sizeof(*arg));
@@ -246,6 +245,7 @@ uint32_t construct_and_register_worker_task(os_transport_handle_t *ost_handle,
             fprintf(stderr, "os_transport: 内存分配失败\n");
             goto err_out;
         }
+        // recv类型的task数量等于chunk数量，因为每个chunk都需要一个recv任务来接收和H2D
         alloc->tasks = calloc(chunk_num, sizeof(ThreadPoolTask));
         alloc->task_args = calloc(chunk_num, sizeof(recv_task_arg_t));
         if (!alloc->tasks || !alloc->task_args) {
@@ -253,12 +253,12 @@ uint32_t construct_and_register_worker_task(os_transport_handle_t *ost_handle,
             goto err_out;
         }
         recv_task_arg_t *task_args = (recv_task_arg_t*)alloc->task_args;
-        recv_info_t recv_info = {0};
         sync->total_tasks = chunk_num;
         for (uint64_t i = 0; i < chunk_num; i++) {
             bool is_last_chunk = (i == chunk_num - 1);
-            construct_recv_task_arg(&task_args[i], recv_info, &chunks[i], is_last_chunk, sync);
-            alloc->tasks[i] = construct_worker_task(i, 0, task_func, &task_args[i]);
+            construct_recv_task_arg(&task_args[i], urma_info.recv_info, &chunks[i], is_last_chunk, sync);
+            uint32_t request_id = (uint32_t)(urma_info.recv_info.request_id);
+            alloc->tasks[i] = construct_worker_task(i, request_id, task_func, &task_args[i]);
         }
         task_ids = thread_pool_submit_batch_tasks(ost_handle->thread_pool, alloc->tasks, chunk_num, NULL, NULL);
         if (!task_ids) {
@@ -317,35 +317,55 @@ void send_task_worker_func(void* arg)
     pthread_mutex_unlock(&sync->mutex);
 }
 
-// 切分chunk的函数，负责将数据切分为多个chunk
-// 返回 0 表示成功，-1 表示失败；retchunks 返回切分后的 chunk 数组，ret_chunk_num 返回 chunk 数量
-uint32_t split_chunks(struct buffer_info* local_src, struct buffer_info* remote_dst,
-                      uint32_t len, struct chunk_info** ret_chunks, uint64_t* ret_chunk_num)
+uint32_t common_split_chunks(uint64_t src_addr, uint64_t dst_addr, uint32_t len, struct chunk_info **ret_chunks, uint64_t *ret_chunk_num)
 {
-    if (!local_src || !remote_dst || !ret_chunks || !ret_chunk_num || len == 0) {
-        fprintf(stderr, "os_transport: 参数非法\n");
-        return -1;
-    }
-    size_t total_len = len;
+    size_t remain_len = len;
     struct chunk_info *chunks;
-    size_t chunks_num = (total_len + DEFAULT_CHUNK_SIZE - 1) / DEFAULT_CHUNK_SIZE;
+    size_t chunks_num = (remain_len + DEFAULT_CHUNK_SIZE - 1) / DEFAULT_CHUNK_SIZE;
     chunks = (struct chunk_info *)malloc(sizeof(struct chunk_info) * chunks_num);
     if (!chunks) {
         fprintf(stderr, "os_transport: 内存分配失败\n");
         return -1;
     }
     for (size_t i = 0; i < chunks_num; i++) {
-        chunks[i].src = local_src[0].addr + i * DEFAULT_CHUNK_SIZE;
-        chunks[i].dst = remote_dst[0].addr + i * DEFAULT_CHUNK_SIZE;
-        chunks[i].len = (total_len - i * DEFAULT_CHUNK_SIZE) > DEFAULT_CHUNK_SIZE
+        chunks[i].src = src_addr + i * DEFAULT_CHUNK_SIZE;
+        chunks[i].dst = dst_addr + i * DEFAULT_CHUNK_SIZE;
+        chunks[i].len = (remain_len - i * DEFAULT_CHUNK_SIZE) > DEFAULT_CHUNK_SIZE
                             ? DEFAULT_CHUNK_SIZE
-                            : (total_len - i * DEFAULT_CHUNK_SIZE);
+                            : (remain_len - i * DEFAULT_CHUNK_SIZE);
     }
     *ret_chunks = chunks;
     *ret_chunk_num = chunks_num;
     return 0;
 }
 
+// 发送数据时切分chunk的函数，负责将数据切分为多个chunk
+// 返回 0 表示成功，-1 表示失败；retchunks 返回切分后的 chunk 数组，ret_chunk_num 返回 chunk 数量
+uint32_t send_split_chunks(struct buffer_info* local_src, struct buffer_info* remote_dst,
+                      uint32_t len, struct chunk_info** ret_chunks, uint64_t* ret_chunk_num)
+{
+    if (!local_src || !remote_dst || len == 0) {
+        fprintf(stderr, "os_transport: 参数非法\n");
+        return -1;
+    }
+    uint64_t src_addr = local_src->addr;
+    uint64_t dst_addr = remote_dst->addr;
+    return common_split_chunks(src_addr, dst_addr, len, ret_chunks, ret_chunk_num);
+}
+
+// 接收数据时切分chunk的函数，负责将数据切分为多个chunk
+// 返回 0 表示成功，-1 表示失败；retchunks 返回切分后的 chunk 数组，ret_chunk_num 返回 chunk 数量
+uint32_t recv_split_chunks(struct buffer_info *host, device_info_t *device, uint32_t len, struct chunk_info **ret_chunks,
+                           uint64_t *ret_chunk_num)
+{
+    if (!host || !device || len == 0) {
+        fprintf(stderr, "os_transport: 参数非法\n");
+        return -1;
+    }
+    uint64_t src_addr = host->addr;
+    uint64_t dst_addr = (uint64_t)(uintptr_t)device->dst;
+    return common_split_chunks(src_addr, dst_addr, len, ret_chunks, ret_chunk_num);
+}
 
 void wait_for_task_complete(task_sync_t* sync_handle)
 {
@@ -404,7 +424,7 @@ uint32_t os_transport_send(void *handle, struct urma_jetty_info *jetty_info,
     // 将源地址中的数据拆分为多个chunk，每个chunk的大小不超过DEFAULT_CHUNK_SIZE
     struct chunk_info* chunks;
     uint64_t chunks_num;
-    if (split_chunks(local_src, remote_dst, len, &chunks, &chunks_num) != 0) {
+    if (send_split_chunks(local_src, remote_dst, len, &chunks, &chunks_num) != 0) {
         return -1;
     }
 
@@ -445,7 +465,7 @@ uint32_t os_transport_send(void *handle, struct urma_jetty_info *jetty_info,
     return 0;
 }
 
-void do_recv_chunk_for_worker(recv_info_t recv_info)
+void do_recv_chunk_for_worker(urma_recv_info_t recv_info)
 {
     // 这里可以调用实际的H2D传输函数来接收数据
 }
@@ -474,10 +494,9 @@ void recv_task_worker_func(void* arg)
  * 2. 等待所有task完成后返回。
  */
 uint32_t os_transport_recv(void* handle, struct buffer_info* host_src,
-                           struct buffer_info* device_dst, uint32_t buffer_num, uint32_t client_key)
+                           device_info_t *device_dst, uint32_t len, uint32_t client_key)
 {
-    (void)client_key;
-    if (!handle || !host_src || !device_dst || buffer_num == 0) {
+    if (!handle || !host_src || !device_dst) {
         fprintf(stderr, "os_transport: 参数非法\n");
         return -1;
     }
@@ -486,21 +505,20 @@ uint32_t os_transport_recv(void* handle, struct buffer_info* host_src,
         return -1;
     }
     os_transport_handle_t *ost_handle = (os_transport_handle_t *)handle;
-    struct chunk_info* chunks = calloc(buffer_num, sizeof(struct chunk_info));
-    if (!chunks) {
-        fprintf(stderr, "os_transport: 内存分配失败\n");
+    struct chunk_info* chunks;
+    uint64_t chunks_num;
+    if (recv_split_chunks(host_src, device_dst, len, &chunks, &chunks_num) != 0) {
         return -1;
-    }
-    for (uint32_t i = 0; i < buffer_num; i++) {
-        chunks[i].src = host_src[i].addr;
-        chunks[i].dst = device_dst[i].addr;
-        chunks[i].len = DEFAULT_CHUNK_SIZE;
     }
 
     urma_info_t urma_info = {0};
+    urma_info.recv_info = (urma_recv_info_t){
+        .device_info = *device_dst,
+        .request_id = client_key
+    };
     task_sync_t* sync_handle;
     if (construct_and_register_worker_task(
-            ost_handle, chunks, buffer_num, RECV_TASK, recv_task_worker_func, urma_info, &sync_handle) != 0) {
+            ost_handle, chunks, chunks_num, RECV_TASK, recv_task_worker_func, urma_info, &sync_handle) != 0) {
         free(chunks);
         return -1;
     }

@@ -82,7 +82,7 @@ typedef struct {
     struct chunk_info *chunk_info;
     bool is_last_chunk;
     // urma接收端相关参数，包括h2d相关信息
-    recv_info_t recv_info;
+    urma_recv_info_t recv_info;
 } recv_task_arg_t;
 
 typedef struct os_transport_handle {
@@ -101,7 +101,7 @@ uint32_t os_transport_send(void *handle, struct urma_jetty_info *jetty_info,
                            uint32_t len, uint32_t server_key, uint32_t client_key);
 
 uint32_t os_transport_recv(void *handle, struct buffer_info *host_src,
-                           struct buffer_info *device_dst, uint32_t buffer_num,
+                           device_info_t *device_dst, uint32_t len,
                            uint32_t client_key);
 
 uint32_t os_transport_destroy(void *handle);

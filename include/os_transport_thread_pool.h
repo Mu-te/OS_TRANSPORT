@@ -9,6 +9,7 @@
  */
 typedef struct {
     uint64_t task_id;                 // 唯一任务ID
+    uint32_t request_id;              // 关联请求ID
     void (*task_func)(void* arg);     // 任务执行函数
     void* task_arg;                   // 任务参数（用户自行管理内存）
     bool is_completed;                // 任务完成标记

@@ -749,6 +749,7 @@ uint64_t thread_pool_submit_task(ThreadPoolHandle handle,
         return 0;
     }
     task->task_id = task_id;
+    task->request_id = 0;
     task->task_func = task_func;
     task->task_arg = task_arg;
     task->is_completed = false;

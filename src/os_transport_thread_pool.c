@@ -524,9 +524,9 @@ static void* worker_thread(void* arg) {
             // 任务完成处理
             task_complete(handle, task->task_id, success);
             
-            // 释放任务内存（用户参数由用户管理，此处释放任务结构体）
-            LOG_DEBUG("worker[%d] task[%lu] released", worker->worker_idx, task->task_id);
-            free(task);
+            // // 释放任务内存（用户参数由用户管理，此处释放任务结构体）——> 改为用sync_handle管理任务生命周期，统一释放
+            // LOG_DEBUG("worker[%d] task[%lu] released", worker->worker_idx, task->task_id);
+            // free(task);
 
             // 尝试拉取pending队列任务
             worker_process_pending(handle, worker);
@@ -752,6 +752,7 @@ uint64_t thread_pool_submit_task(ThreadPoolHandle handle,
     task->task_func = task_func;
     task->task_arg = task_arg;
     task->is_completed = false;
+    task->free_task_self = true;
 
     // 设置回调
     pthread_mutex_lock(&handle->global_mutex);
@@ -799,6 +800,7 @@ uint64_t* thread_pool_submit_batch_tasks(ThreadPoolHandle handle,
         task_ids[i] = handle->next_task_id++;
         tasks[i].task_id = task_ids[i];
         tasks[i].is_completed = false;
+        tasks[i].free_task_self = false;
     }
     pthread_mutex_unlock(&handle->task_id_mutex);
 
@@ -915,7 +917,9 @@ void thread_pool_destroy(ThreadPoolHandle handle) {
     ThreadPoolTask* task = NULL;
     while ((task = pending_queue_pop(&handle->pending_queue)) != NULL) {
         LOG_WARN("pending queue task[%lu] not executed, free", task->task_id);
-        free(task);
+        if (task->free_task_self) {
+            free(task);
+        }
     }
 
     // 清理worker队列剩余任务
@@ -924,7 +928,9 @@ void thread_pool_destroy(ThreadPoolHandle handle) {
         ThreadPoolTask* w_task = NULL;
         while ((w_task = worker_queue_pop(worker)) != NULL) {
             LOG_WARN("worker[%d] task[%lu] not executed, free", i, w_task->task_id);
-            free(w_task);
+            if (w_task->free_task_self) {
+                free(w_task);
+            }
         }
     }
 

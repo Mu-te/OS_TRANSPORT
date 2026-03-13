@@ -155,11 +155,13 @@ void construct_recv_task_arg(recv_task_arg_t *arg, recv_info_t recv_info,
 }
 
 // 构建供worker取用的task信息
-ThreadPoolTask construct_worker_task(uint64_t task_id, void (*task_func)(void*),
-                                     void* task_arg)
+ThreadPoolTask construct_worker_task(uint64_t task_id, uint32_t request_id,
+                                     void (*task_func)(void*), void* task_arg)
 {
     ThreadPoolTask task;
+    memset(&task, 0, sizeof(task));
     task.task_id = task_id;
+    task.request_id = request_id;
     task.task_func = task_func;
     task.task_arg = task_arg;
     task.is_completed = false;
@@ -224,7 +226,9 @@ uint32_t construct_and_register_worker_task(os_transport_handle_t *ost_handle,
             uint64_t chunk_idx = i + 1; // 对应 chunks 数组中的索引
             bool is_last_chunk = (chunk_idx == chunk_num - 1) ? true : false;
             construct_send_task_arg(&task_args[i], urma_info.write_info, &chunks[chunk_idx], chunk_idx, is_last_chunk, sync);
-            alloc->tasks[i] = construct_worker_task(chunk_idx, task_func, &task_args[i]);
+            uint32_t request_id = (uint32_t)(urma_info.write_info.user_ctx_server);
+            alloc->tasks[i] =
+                construct_worker_task(chunk_idx, request_id, task_func, &task_args[i]);
         }
         // 批量提交任务到线程池
         task_ids = thread_pool_submit_batch_tasks(ost_handle->thread_pool, alloc->tasks, task_count, NULL, NULL);
@@ -254,7 +258,7 @@ uint32_t construct_and_register_worker_task(os_transport_handle_t *ost_handle,
         for (uint64_t i = 0; i < chunk_num; i++) {
             bool is_last_chunk = (i == chunk_num - 1);
             construct_recv_task_arg(&task_args[i], recv_info, &chunks[i], is_last_chunk, sync);
-            alloc->tasks[i] = construct_worker_task(i, task_func, &task_args[i]);
+            alloc->tasks[i] = construct_worker_task(i, 0, task_func, &task_args[i]);
         }
         task_ids = thread_pool_submit_batch_tasks(ost_handle->thread_pool, alloc->tasks, chunk_num, NULL, NULL);
         if (!task_ids) {

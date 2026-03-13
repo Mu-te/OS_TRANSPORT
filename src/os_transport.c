@@ -69,13 +69,6 @@ uint32_t os_transport_reg_jfc(urma_jfce_t* jfce, urma_jfc_t* jfc, void* handle)
     return 0;
 }
 
-urma_status_t urma_write_with_notify(urma_write_info_t write_info, struct chunk_info *chunk_info)
-{
-
-
-    return URMA_SUCCESS;
-}
-
 // 构造send任务的函数参数
 send_task_arg_t* construct_send_task_arg(urma_write_info_t write_info, struct chunk_info *chunk_info, uint64_t chunk_id,
                                          bool is_last_chunk, task_sync_t* sync)

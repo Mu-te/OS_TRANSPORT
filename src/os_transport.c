@@ -179,7 +179,7 @@ static urma_write_info_t build_write_info(struct urma_jetty_info *jetty_info,
                                     .target_jfr = jetty_info->tjetty,
                                     .dst_tseg = remote_dst->tseg,
                                     .src_tseg = local_src->tseg,
-                                    .flag = {0},
+                                    .flag.value = 0,
                                     .user_ctx_server = server_key,
                                     .user_ctx_client = client_key};
     return write_info;
@@ -359,7 +359,7 @@ static int register_send_tasks(os_transport_handle_t *ost_handle, struct chunk_i
     }
 
     task_ids = thread_pool_submit_batch_tasks(
-        ost_handle->thread_pool, alloc->tasks, task_count, NULL, NULL);
+        ost_handle->thread_pool, alloc->tasks, task_count, NULL, NULL, NULL, NULL);
     if (!task_ids) {
         fprintf(stderr, "os_transport: 任务提交失败\n");
         free(alloc->task_args);
@@ -397,7 +397,7 @@ static int register_recv_tasks(os_transport_handle_t *ost_handle, struct chunk_i
     }
 
     task_ids = thread_pool_submit_batch_tasks(
-        ost_handle->thread_pool, alloc->tasks, chunk_num, NULL, NULL);
+        ost_handle->thread_pool, alloc->tasks, chunk_num, NULL, NULL, NULL, NULL);
     if (!task_ids) {
         fprintf(stderr, "os_transport: recv任务提交失败\n");
         free(alloc->task_args);

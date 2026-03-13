@@ -20,9 +20,9 @@ urma_status_t urma_write_with_notify(urma_write_info_t write_info, struct chunk_
         .num_sge = 1
     };
     urma_rw_wr_t rw = {
-        .src = &src_sg,
+        .src = src_sg,
         .notify_data = write_info.user_ctx_client,
-        .dst = &dst_sg
+        .dst = dst_sg
     };
     urma_jfs_wr_t wr = {
         .opcode = URMA_OPC_WRITE_NOTIFY,

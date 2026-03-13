@@ -6,6 +6,8 @@
 #    include <urma/urma_ubagg.h>
 #endif
 
+struct chunk_info;
+
 typedef struct {
     urma_jfs_t *jfs;
     urma_jetty_t *jetty;

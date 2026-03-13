@@ -94,7 +94,7 @@ uint32_t os_transport_reg_jfc(urma_jfce_t *jfce, urma_jfc_t *jfc, void *handle);
 
 uint32_t os_transport_send(void *handle, struct urma_jetty_info *jetty_info,
                            struct buffer_info *local_src, struct buffer_info *remote_dst,
-                           uint32_t len, uint32_t request_key);
+                           uint32_t len, uint32_t server_key, uint32_t client_key);
 
 uint32_t os_transport_recv(void *handle, struct buffer_info *host_src,
                            struct buffer_info *device_dst, uint32_t buffer_num,
